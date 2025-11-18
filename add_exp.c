@@ -4,11 +4,12 @@ struct Expense {
     char payer[20];
     char participants[20];
     float amount;
-    char date[10]; };
+    char date[10];
+};
 void add_expense(const char *groupName, const char *category, const char *payer,
                  const char *participants, float amount, const char *date) {
     struct Expense e;
-    FILE *fp = fopen("expenses.txt", "ab+");
+    FILE *fp = fopen("expenses.txt", "a+");
     if (fp == NULL) {
         printf("Error opening expense file.\n");
         return;
@@ -19,18 +20,21 @@ void add_expense(const char *groupName, const char *category, const char *payer,
     strcpy(e.participants, participants);
     e.amount = amount;
     strcpy(e.date, date);
-    fwrite(&e, sizeof(struct Expense), 1, fp);
+    fprintf(fp, "%s %s %s %s %.2f %s\n",
+            e.groupName, e.category, e.payer, e.participants, e.amount, e.date);
+
     fclose(fp);
 }
 void list_expenses() {
     struct Expense e;
-    FILE *fp = fopen("expenses.txt", "rb");
+    FILE *fp = fopen("expenses.txt", "r");
     if (fp == NULL) {
         printf("No expenses found.\n");
         return;
     }
     int count = 0;
-    while (fread(&e, sizeof(struct Expense), 1, fp)) {
+    while (fscanf(fp, "%s %s %s %s %f %s",
+                  e.groupName, e.category, e.payer, e.participants, &e.amount, e.date) == 6) {
         printf("%d. Group: %s | Category: %s | Payer: %s | Participants: %s | Amount: %.2f | Date: %s\n",
                ++count, e.groupName, e.category, e.payer, e.participants, e.amount, e.date);
     }
