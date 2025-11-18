@@ -4,15 +4,21 @@ struct Expense {
     char payer[20];
     char participants[20];
     float amount;
-    char date[10]; };
+    char date[10];
+};
 struct MemberShare {
     char name[20];
-    float balance;  };
-void sp_ex(const char *groupName, const char *category, const char *payer,
-           const char *participants, float amount, const char *date) {
-    printf("\n=== Expense Split for Group: %s ===\n", groupName);
-    printf("Category: %s\nDate: %s\n", category, date);
-    printf("Payer: %s\nTotal Amount: %.2f\n\n", payer, amount);
+    float balance;
+};
+float sp_ex(const char *groupName, const char *category, const char *payer,const char *participants, float amount, const char *date) {
+    FILE *p = fopen("split.txt", "a+");  
+    if (!p) {
+            printf("Error creating split file.\n");
+            return 0;
+            }
+    fprintf(p,"\n=== Expense Split for Group: %s ===\n", groupName);
+    fprintf(p,"Category: %s\nDate: %s\n", category, date);
+    fprintf(p,"Payer: %s\nTotal Amount: %.2f\n\n", payer, amount);
     char parts_copy[200];
     strcpy(parts_copy, participants);
     char *token = strtok(parts_copy, " ,");
@@ -26,10 +32,11 @@ void sp_ex(const char *groupName, const char *category, const char *payer,
     }
     if (count == 0) {
         printf("No participants entered.\n");
-        return;
+        return 0;
     }
     float share = amount / count;
-    printf("Each member's share: %.2f\n\n", share);
+    fprintf(p,"Each member's share: %.2f\n\n", share);
+    return share;
     for (int i = 0; i < count; i++) {
         if (strcmp(members[i].name, payer) == 0)
             members[i].balance += amount - share;
@@ -48,7 +55,7 @@ void sp_ex(const char *groupName, const char *category, const char *payer,
                                     ? members[j].balance
                                     : -members[i].balance;
                     if (pay > 0.001) {
-                        printf("%s pays %.2f to %s\n", members[i].name, pay, members[j].name);
+                        fprintf(p,"%s pays %.2f to %s\n", members[i].name, pay, members[j].name);
                         members[i].balance += pay;
                         members[j].balance -= pay;
                     }
@@ -56,7 +63,7 @@ void sp_ex(const char *groupName, const char *category, const char *payer,
             }
         }
     }
-    printf("Transitive Settlements\n");
+    printf("---Transitive Settlements---\n");
     for (int i = 0; i < count; i++) {
         if (members[i].balance < 0) {
             for (int j = 0; j < count; j++) {
@@ -90,11 +97,13 @@ void sp_ex(const char *groupName, const char *category, const char *payer,
     strcpy(e.participants, participants);
     e.amount = amount;
     strcpy(e.date, date);
-    FILE *fp = fopen("expenses.txt", "ab");
+    FILE *fp = fopen("expenses.txt", "a+"); 
     if (!fp) {
         printf("Error opening expenses file\n");
-        return;
+        return 0;
     }
-    fwrite(&e, sizeof(struct Expense), 1, fp);
+    fprintf(fp, "%s %s %s %s %.2f %s\n",
+            e.groupName, e.category, e.payer, e.participants, e.amount, e.date);
     fclose(fp);
 }
+
