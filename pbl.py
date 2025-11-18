@@ -8,9 +8,9 @@ lib.login_user.restype = ctypes.c_int
 lib.create_group.argtypes = [ctypes.c_char_p]
 lib.create_group.restype = None
 lib.delete_group.argtypes = [ctypes.c_char_p]
-lib.delete_group.restype = None
+lib.delete_group.restype = ctypes.c_int
 lib.add_member.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
-lib.add_member.restype = None
+lib.add_member.restype = ctypes.c_int
 lib.list_groups.argtypes = []
 lib.list_groups.restype = None
 lib.add_category.argtypes = [ctypes.c_char_p]
@@ -23,10 +23,12 @@ lib.list_expenses.argtypes = []
 lib.list_expenses.restype = None
 lib.settle.argtypes = [ctypes.c_char_p,ctypes.c_char_p,ctypes.c_char_p]
 lib.settle.restype = None
+lib.transitive.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+lib.transitive.restype = None
 lib.ex_hist.argtypes = None
 lib.ex_hist.restype = None
 lib.sp_ex.argtypes =  [ctypes.c_char_p,ctypes.c_char_p,ctypes.c_char_p,ctypes.c_char_p,ctypes.c_float,ctypes.c_char_p]
-lib.sp_ex.restype = None
+lib.sp_ex.restype = ctypes.c_float
 logged_user = ""
 def show(frame):
     frame.tkraise()
@@ -70,8 +72,11 @@ def groups_page():
     lib.list_groups()
     sys.stdout = sys.__stdout__
     text.insert(END, buffer.getvalue())
+    if not os.path.exists("groups.txt"):
+        open("groups.txt", "w", encoding="utf-8").close()
     with open("groups.txt", "r", encoding="utf-8", errors="ignore") as f:
         content = f.read()
+
     text.delete(1.0, END)
     text.insert(END, content)
     Button(p5, text="Create Group", command=create_group_ui).pack(pady=5)
@@ -79,7 +84,6 @@ def groups_page():
     Button(p5, text="Delete Group", command=delete_group_ui).pack(pady=5)
     Button(p5, text="Back", command=lambda: show(p4)).pack(pady=10)
     show(p5)
-
 def create_group_ui():
     top = Toplevel(root)
     top.title("Create Group")
@@ -87,14 +91,33 @@ def create_group_ui():
     gname = Entry(top)
     gname.pack()
     Button(top, text="Submit", command=lambda: lib.create_group(gname.get().encode()) or Label(top, text="Group Created!", fg="green").pack()).pack()
-
 def delete_group_ui():
     top = Toplevel(root)
     top.title("Delete Group")
+
     Label(top, text="Group Name").pack()
     gname = Entry(top)
     gname.pack()
-    Button(top, text="Delete", command=lambda: lib.delete_group(gname.get().encode()) or Label(top, text="Group Deleted!", fg="green").pack()).pack()
+
+    msg_label = Label(top, text="", fg="red")
+    msg_label.pack(pady=5)
+
+    def delete_selected_group():
+        group = gname.get().strip()
+
+        if not group:
+            msg_label.config(text="Please enter a group name", fg="red")
+            return
+
+        # Call the C function
+        result = lib.delete_group(group.encode())
+
+        if result == 1:
+            msg_label.config(text="Group deleted successfully!", fg="green")
+        else:
+            msg_label.config(text="Group not found", fg="red")
+
+    Button(top, text="Delete", command=delete_selected_group).pack(pady=5)
 
 def add_member_ui():
     top = Toplevel(root)
@@ -111,8 +134,23 @@ def add_member_ui():
     Label(top, text="UPI").pack()
     mupi = Entry(top)
     mupi.pack()
-    Button(top, text="Submit", command=lambda: lib.add_member(gname.get().encode(), mname.get().encode(), mcontact.get().encode(), mupi.get().encode()) or Label(top, text="Member Added!", fg="green").pack()).pack()
-
+    msg_label = Label(top, text="", fg="red")
+    msg_label.pack(pady=5)
+    def submit_member():
+        group = gname.get().strip()
+        name = mname.get().strip()
+        contact = mcontact.get().strip()
+        upi = mupi.get().strip()
+        if not group or not name or not contact or not upi:
+            msg_label.config(text="Please fill all entries", fg="red")
+            return
+        result = lib.add_member(group.encode(), name.encode(), contact.encode(), upi.encode())
+        if result == 1:
+            msg_label.config(text="Member added successfully!", fg="green")
+        else:
+            msg_label.config(text="Group not found", fg="red")
+    Button(top, text="Submit", command=submit_member).pack(pady=5)
+    
 def ex_cat_page():
     clear_frame(p6)
     Label(p6, text="Categories", font=("Arial", 14)).pack(pady=10)
@@ -123,11 +161,14 @@ def ex_cat_page():
     lib.list_categories()
     sys.stdout = sys.__stdout__
     content = buffer.getvalue()
+    with open("categories.txt", "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+    text.delete(1.0, END)
+    text.insert(END, content)
     #text.insert(END, content if content.strip() else "No categories found.\n")
     Button(p6, text="Add Category", command=add_category_ui).pack(pady=5)
     Button(p6, text="Back", command=lambda: show(p4)).pack(pady=10)
     show(p6)
-
 def add_category_ui():
     clear_frame(p6)
     Label(p6, text="Add New Category", font=("Arial", 14)).pack(pady=10)
@@ -172,49 +213,48 @@ def split_page():
             return
         buffer = io.StringIO()
         sys.stdout = buffer
-        lib.sp_ex(group.encode('utf-8'),category.encode('utf-8'),
+        s=lib.sp_ex(group.encode('utf-8'),category.encode('utf-8'),
                   payer.encode('utf-8'),participants.encode('utf-8'),ctypes.c_float(amount),date.encode('utf-8'))
         sys.stdout = sys.__stdout__
-        text.insert(END, buffer.getvalue())
+        '''with open("split.txt", "r", encoding="utf-8", errors="ignore") as fi:
+            content = fi.read()
+        text.delete(1.0, END)
+        text.insert(END, content)'''
+        text.insert(END,s)
     Button(p10, text="Split Expense",command=call_split,bg="plum", fg="white",relief="raised", width=18).pack(pady=10)
     Button(p10, text="Back",command=lambda: show(p4),bg="lightpink", fg="black",width=18).pack(pady=(0, 10))
     show(p10)
 
-def view_page():
-    pass
 def settle_page():
     clear_frame(p8)
     Label(p8, text="Settle Payments", font=("Arial", 14)).pack(pady=10)
-
     text = Text(p8, width=90, height=15)
     text.pack()
-
     buffer = io.StringIO()
     sys.stdout = buffer
     lib.list_expenses() 
     sys.stdout = sys.__stdout__
     content = buffer.getvalue()
-    #text.insert(END, content if content.strip() else "No expenses found.\n")
-
+    with open("expenses.txt", "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+    text.delete(1.0, END)
+    text.insert(END, content)
     Button(p8, text="Settle Payment", command=settle_ui).pack(pady=5)
+    Button(p8, text="Transitive Payment", command=transitive_ui).pack(pady=5)
     Button(p8, text="Back", command=lambda: show(p4)).pack(pady=10)
     show(p8)
 def settle_ui():
     clear_frame(p8)
     Label(p8, text="Settle Payment", font=("Arial", 14)).pack(pady=10)
-
     Label(p8, text="Group Name:").pack()
     group_entry = Entry(p8, width=30)
     group_entry.pack(pady=5)
-
     Label(p8, text="Payer Name:").pack()
     payer_entry = Entry(p8, width=30)
     payer_entry.pack(pady=5)
-
     Label(p8, text="Receiver Name:").pack()
     receiver_entry = Entry(p8, width=30)
     receiver_entry.pack(pady=5)
-
     def process_settlement():
         group = group_entry.get().strip()
         payer = payer_entry.get().strip()
@@ -224,9 +264,36 @@ def settle_ui():
             return
         lib.settle(group.encode(), payer.encode(), receiver.encode())
         settle_page()  
-
     Button(p8, text="Settle", command=process_settlement).pack(pady=5)
     Button(p8, text="Back", command=settle_page).pack(pady=10)
+def transitive_ui():
+    clear_frame(p8)
+    Label(p8, text="Transitive Payment", font=("Arial", 14)).pack(pady=10)
+    Label(p8, text="Group Name:").pack()
+    group_entry = Entry(p8, width=30)
+    group_entry.pack(pady=5)
+    Label(p8, text="Payer Name:").pack()
+    payer_entry = Entry(p8, width=30)
+    payer_entry.pack(pady=5)
+    Label(p8, text="Middle Person:").pack()
+    middle_entry = Entry(p8, width=30)
+    middle_entry.pack(pady=5)
+    Label(p8, text="Receiver Name:").pack()
+    receiver_entry = Entry(p8, width=30)
+    receiver_entry.pack(pady=5)
+    def process_transitive():
+        group = group_entry.get().strip()
+        payer = payer_entry.get().strip()
+        middle = middle_entry.get().strip()
+        receiver = receiver_entry.get().strip()
+        if not (group and payer and middle and receiver):
+            print("Please fill all fields.")
+            return
+        lib.transitive(group.encode(), payer.encode(), middle.encode(), receiver.encode())
+        settle_page()
+    Button(p8, text="Settle", command=process_transitive).pack(pady=5)
+    Button(p8, text="Back", command=settle_page).pack(pady=10)
+
 
 def hist_page():
     clear_frame(p9)
@@ -238,11 +305,12 @@ def hist_page():
     lib.ex_hist() 
     sys.stdout = sys.__stdout__
     content = buffer.getvalue()
+    with open("hist.txt", "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+    text.delete(1.0, END)
+    text.insert(END, content)
     Button(p9, text="Back", command=lambda: show(p4)).pack(pady=10)
     show(p9)
-
-def report_page():
-    pass
 
 def add_page():
     clear_frame(p7)
@@ -254,11 +322,13 @@ def add_page():
     lib.list_expenses()
     sys.stdout = sys.__stdout__
     content = buffer.getvalue()
-    #text.insert(END, content if content.strip() else "No expenses found.\n")
+    with open("expenses.txt", "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+    text.delete(1.0, END)
+    text.insert(END, content)
     Button(p7, text="Add Expense", command=add_expense_ui).pack(pady=5)
     Button(p7, text="Back", command=lambda: show(p4)).pack(pady=10)
     show(p7)
-
 def add_expense_ui():
     clear_frame(p7)
     Label(p7, text="Add New Expense", font=("Arial", 14)).pack(pady=10)
@@ -311,7 +381,7 @@ Label(p2, text="Password").grid(row=2, column=0)
 userval = StringVar()
 passval = StringVar()
 Entry(p2, textvariable=userval).grid(row=1, column=1)
-Entry(p2, textvariable=passval).grid(row=2, column=1)
+Entry(p2, textvariable=passval,show='*').grid(row=2, column=1)
 Button(p2, text="Submit", command=login).grid(row=3, column=0, columnspan=2, pady=10)
 Button(p2, text="Back", command=lambda: show(p1)).grid(row=5, column=0, columnspan=2, pady=10)
 
@@ -322,14 +392,14 @@ Label(p3, text="Contact").grid(row=3, column=0)
 Label(p3, text="UPI").grid(row=4, column=0)
 uval, pval, cval, upival = StringVar(), StringVar(), StringVar(), StringVar()
 Entry(p3, textvariable=uval).grid(row=1, column=1)
-Entry(p3, textvariable=pval).grid(row=2, column=1)
+Entry(p3, textvariable=pval,show='*').grid(row=2, column=1)
 Entry(p3, textvariable=cval).grid(row=3, column=1)
 Entry(p3, textvariable=upival).grid(row=4, column=1)
 Button(p3, text="Submit", command=register).grid(row=5, column=0, columnspan=2, pady=10)
 Button(p3, text="Back", command=lambda: show(p1)).grid(row=6, column=0, columnspan=2, pady=10)
 
 Label(p4, text="Dashboard", font=("Arial", 16)).pack(pady=20)
-buttons = ["Groups", "Expense Categorization", "Add Expenses", "Split Expenses","View Balance", "Settle Payments", "Expense History", "Basic Report", "Exit"]
+buttons = ["Groups", "Expense Categorization", "Add Expenses", "Split Expenses", "Settle Payments", "Expense History", "Exit"]
 for b in buttons:
     if b == "Groups":
         Button(p4, text=b, width=25, command=groups_page).pack(pady=5)
@@ -339,14 +409,10 @@ for b in buttons:
         Button(p4, text=b, width=25, command=add_page).pack(pady=5)
     elif b == "Split Expenses":
         Button(p4, text=b, width=25, command=split_page).pack(pady=5)
-    #elif b == "View Balance":
-        #Button(p4, text=b, width=25, command=view_page).pack(pady=5)
     elif b == "Settle Payments":
         Button(p4, text=b, width=25, command=settle_page).pack(pady=5)
     elif b == "Expense History":
         Button(p4, text=b, width=25, command=hist_page).pack(pady=5)
-    #elif b == "Basic Report":
-        #Button(p4, text=b, width=25, command=report_page).pack(pady=5)
     elif b == "Exit":
         Button(p4, text=b, width=25, command=root.destroy).pack(pady=5)
 
