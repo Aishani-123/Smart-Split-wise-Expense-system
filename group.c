@@ -1,89 +1,119 @@
 struct Member {
     char name[20];
     char contact[20];
-    char upi[20]; };
+    char upi[20];
+};
 struct Group {
     char groupName[20];
     struct Member members[20];
-    int memberCount; };
+    int memberCount;
+};
 void create_group(const char *groupName) {
     struct Group g;
-    FILE *fp = fopen("groups.txt", "ab+");
-    FILE *d = fopen("groups_d.txt", "ab+");
+    FILE *fp = fopen("groups.txt", "a+");
+    FILE *d = fopen("groups_d.txt", "a+");
     if (fp == NULL) {
         printf("Error opening group file.\n");
         return;
     }
-    while (fread(&g, sizeof(struct Group), 1, fp)) {
+    int found = 0;
+    while (fscanf(fp, "%s %d", g.groupName, &g.memberCount) == 2) {
         if (strcmp(g.groupName, groupName) == 0) {
-            fclose(fp);
-            printf("Group already exists.\n");
-            return;
+            found = 1;
+            break;
         }
+        for (int i = 0; i < g.memberCount; i++)
+            fscanf(fp, "%s %s %s", g.members[i].name, g.members[i].contact, g.members[i].upi);
+    }
+    if (found) {
+        fclose(fp);
+        printf("Group already exists.\n");
+        return;
     }
     strcpy(g.groupName, groupName);
     g.memberCount = 0;
-    fwrite(&g, sizeof(struct Group), 1, fp);
-    if(d){fprintf(d,"Group: %s | Members: %d\n",g.groupName,g.memberCount);
-    fclose(d);}
+    fprintf(fp, "%s %d\n", g.groupName, g.memberCount);
     fclose(fp);
+    if (d) {
+        fprintf(d, "%s %d\n", g.groupName, g.memberCount);
+        fclose(d);
+    }
     printf("Group created successfully.\n");
 }
 void list_groups() {
     struct Group g;
-    FILE *fp = fopen("groups.txt", "rb+");
+    FILE *fp = fopen("groups.txt", "r");
     if (fp == NULL) {
         printf("No groups found.\n");
         return;
     }
     printf("\n--- Groups ---\n");
-    while (fread(&g, sizeof(struct Group), 1, fp)) {
-        if (strcmp(g.groupName, "DELETED") != 0) {
+    while (fscanf(fp, "%s %d", g.groupName, &g.memberCount) == 2) {
+        if (strcmp(g.groupName, "DELETED") != 0)
             printf("Group: %s | Members: %d\n", g.groupName, g.memberCount);
-        }
+        for (int i = 0; i < g.memberCount; i++)
+            fscanf(fp, "%s %s %s", g.members[i].name, g.members[i].contact, g.members[i].upi);
     }
     fclose(fp);
 }
-void add_member(const char *groupName, const char *memberName, const char *contact, const char *upi) {
+int add_member(const char *groupName, const char *memberName, const char *contact, const char *upi) {
     struct Group g;
-    FILE *fp = fopen("groups.txt", "rb+");
-    if (fp == NULL) {
-        printf("Error opening group file.\n");
-        return;
+    FILE *fp = fopen("groups.txt", "r");
+    FILE *temp = fopen("temp.txt", "w");
+    if (!fp || !temp) {
+        printf("Error opening file.\n");
+        return 0;
     }
-    while (fread(&g, sizeof(struct Group), 1, fp)) {
+    int found = 0;
+    while (fscanf(fp, "%s %d", g.groupName, &g.memberCount) == 2) {
+        for (int i = 0; i < g.memberCount; i++)
+            fscanf(fp, "%s %s %s", g.members[i].name, g.members[i].contact, g.members[i].upi);
         if (strcmp(g.groupName, groupName) == 0) {
             if (g.memberCount >= 20) {
                 printf("Group is full!\n");
                 fclose(fp);
-                return;
+                fclose(temp);
+                remove("temp.txt");
+                return found;
             }
             strcpy(g.members[g.memberCount].name, memberName);
             strcpy(g.members[g.memberCount].contact, contact);
             strcpy(g.members[g.memberCount].upi, upi);
             g.memberCount++;
-            fseek(fp, -(long)sizeof(struct Group), SEEK_CUR);
-            fwrite(&g, sizeof(struct Group), 1, fp);
-            fclose(fp);
-            printf("Member added successfully.\n");
-            return;
+            found = 1;
         }
+        fprintf(temp, "%s %d\n", g.groupName, g.memberCount);
+        for (int i = 0; i < g.memberCount; i++)
+            fprintf(temp, "%s %s %s\n", g.members[i].name, g.members[i].contact, g.members[i].upi);
     }
     fclose(fp);
-    printf("Group not found.\n");
+    fclose(temp);
+    remove("groups.txt");
+    rename("temp.txt", "groups.txt");
+    if (found)
+    {
+        printf("Member added successfully.\n");
+    return 1;}
+    else
+    { 
+        printf("Group not found.\n"); return 0;}
 }
-void delete_group(const char *groupName) {
+int delete_group(const char *groupName) {
     struct Group g;
-    FILE *fp = fopen("groups.txt", "rb+");
-    FILE *temp = fopen("temp.txt", "wb+"); 
+    FILE *fp = fopen("groups.txt", "r");
+    FILE *temp = fopen("temp.txt", "w");
     int found = 0;
     if (!fp || !temp) {
         printf("Error opening file.\n");
-        return;
+        return 0;
     }
-    while (fread(&g, sizeof(struct Group), 1, fp)) {
+    while (fscanf(fp, "%s %d", g.groupName, &g.memberCount) == 2) {
+        for (int i = 0; i < g.memberCount; i++)
+            fscanf(fp, "%s %s %s", g.members[i].name, g.members[i].contact, g.members[i].upi);
         if (strcmp(g.groupName, groupName) != 0) {
-            fwrite(&g, sizeof(struct Group), 1, temp);
+            fprintf(temp, "%s %d\n", g.groupName, g.memberCount);
+            for (int i = 0; i < g.memberCount; i++)
+                fprintf(temp, "%s %s %s\n", g.members[i].name, g.members[i].contact, g.members[i].upi);
         } else {
             found = 1;
         }
@@ -96,4 +126,5 @@ void delete_group(const char *groupName) {
         printf("Group deleted successfully.\n");
     else
         printf("Group not found.\n");
+    return found;
 }
